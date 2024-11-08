@@ -9,5 +9,5 @@ const button = document.createElement("button");
 button.textContent = "Click Me";
 app.appendChild(button);
 button.addEventListener("click", function () {
-  alert("you clicked the button!");
+  alert("You clicked the button!");
 });
