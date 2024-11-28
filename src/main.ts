@@ -9,13 +9,12 @@ const APP_NAME = "Geocoin";
 const app: HTMLDivElement = document.querySelector("#app")!;
 const header = document.createElement("h1");
 const playerCoins = document.createElement("h3");
-let coinCount: number = 0; 
+let coinCount: number = 0;
 header.innerHTML = APP_NAME;
 playerCoins.innerHTML = `Player Money: ${coinCount}`;
 
 app.append(header);
 app.append(playerCoins);
-
 
 //Create map of Oake's College
 const PLAYER_LAT = 36.9895;
@@ -42,15 +41,15 @@ interface Cell {
   latitude: number;
   longitude: number;
 }
-function cellBounds(cache: Cell){
-  const startLat = cache.latitude - (CELL_SIZE/2);
-  const startLong = cache.longitude - (CELL_SIZE/2);
-  const endLat = cache.latitude + (CELL_SIZE/2);
-  const endLong = cache.longitude + (CELL_SIZE/2);
-  return [[startLat,startLong],[endLat,endLong]]
+function cellBounds(cache: Cell) {
+  const startLat = cache.latitude - (CELL_SIZE / 2);
+  const startLong = cache.longitude - (CELL_SIZE / 2);
+  const endLat = cache.latitude + (CELL_SIZE / 2);
+  const endLong = cache.longitude + (CELL_SIZE / 2);
+  return [[startLat, startLong], [endLat, endLong]];
 }
 
-interface Cache{
+interface Cache {
   data: Cell;
   coin: number;
   RNG: boolean;
@@ -60,17 +59,17 @@ function createGrid(
   startLat: number,
   startLon: number,
   cellSize: number,
-  gridRadius: number
+  gridRadius: number,
 ): Cache[] {
   const grid: Cache[] = [];
   for (let row = -gridRadius; row <= gridRadius; row++) {
     for (let col = -gridRadius; col <= gridRadius; col++) {
       const cellLat = startLat + row * cellSize;
       const cellLon = startLon + col * cellSize;
-      const newCell = { latitude: cellLat, longitude: cellLon }
+      const newCell = { latitude: cellLat, longitude: cellLon };
       const coins = Math.floor(luck(`${row},${col}-coins`) * 20) + 1; // Random 1–10 coins
       const probability = luck(`${row},${col}`) < 0.1;
-      const newCache = {data: newCell, coin: coins, RNG: probability}
+      const newCache = { data: newCell, coin: coins, RNG: probability };
       grid.push(newCache);
     }
   }
@@ -81,9 +80,9 @@ function newButton(name: string) {
   button.textContent = name;
   return button;
 }
-function drawCachesOnMap(grid: Cache[]){
+function drawCachesOnMap(grid: Cache[]) {
   grid.forEach((item) => {
-    if(item.RNG){
+    if (item.RNG) {
       const bounds = cellBounds(item.data);
       const rectangle = leaflet.rectangle(bounds).addTo(map);
       const updatePopup = () => {
@@ -97,24 +96,24 @@ function drawCachesOnMap(grid: Cache[]){
         <p>Coins: ${item.coin}`;
         container.appendChild(coinInfo);
 
-        const collectButton = newButton("Collect")
+        const collectButton = newButton("Collect");
         container.appendChild(collectButton);
         collectButton.addEventListener("click", function () {
-          if (item.coin > 0) { 
+          if (item.coin > 0) {
             item.coin--;
             coinCount++;
             updateText(playerCoins, coinInfo, item);
             refreshButtons();
           }
         });
-        const depositButton = newButton("Deposit")
+        const depositButton = newButton("Deposit");
         container.appendChild(depositButton);
         depositButton.addEventListener("click", function () {
-        if (coinCount > 0) {
-          item.coin++;
-          coinCount--;
-          updateText(playerCoins, coinInfo, item);
-          refreshButtons();
+          if (coinCount > 0) {
+            item.coin++;
+            coinCount--;
+            updateText(playerCoins, coinInfo, item);
+            refreshButtons();
           }
         });
 
@@ -133,7 +132,11 @@ function drawCachesOnMap(grid: Cache[]){
     }
   });
 }
-function updateText (playerCoin: HTMLHeadingElement, cacheCoin: HTMLHeadingElement, cache: Cache){
+function updateText(
+  playerCoin: HTMLHeadingElement,
+  cacheCoin: HTMLHeadingElement,
+  cache: Cache,
+) {
   playerCoin.innerHTML = `Player Money: ${coinCount}`;
   cacheCoin.innerHTML = `
     Cache Details
