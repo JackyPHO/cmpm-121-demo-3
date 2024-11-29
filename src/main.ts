@@ -9,7 +9,7 @@ const APP_NAME = "Geocoin";
 const app: HTMLDivElement = document.querySelector("#app")!;
 const header = document.createElement("h1");
 const playerInfo = document.createElement("h3");
-let playerCoins: Coin[] = [];
+const playerCoins: Coin[] = [];
 header.innerHTML = APP_NAME;
 playerInfo.innerHTML = `Player Money: ${playerCoins.length}`;
 
