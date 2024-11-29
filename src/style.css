@@ -69,6 +69,17 @@ button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
+coinhover {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  padding: 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  pointer-events: none;
+  display: none; /* Initially hidden */
+  z-index: 1000;
+}
 
 @media (prefers-color-scheme: light) {
   :root {

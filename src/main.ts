@@ -117,40 +117,50 @@ function drawCachesOnMap(grid: Cache[]) {
     const bounds = cellBounds(item.data);
     const rectangle = leaflet.rectangle(bounds).addTo(map);
     const updatePopup = () => {
-      // Create a container for popup content
+      // Create elements for the popup
       const container = document.createElement("div");
       const coinInfo = document.createElement("h4");
+
+      // Cache details in the popup
       coinInfo.innerHTML = `
-      Cache Details
-      <p>Latitude: ${item.data.latitude.toFixed(4)}</p> 
-      <p>Longitude: ${item.data.longitude.toFixed(4)}</p> 
-      <p>Coins: ${item.coins.length}
-      <p>Coin Data: ${item.coins[item.coins.length - 1].identity}</p>`;
+        Cache Details
+        <p>Latitude: ${item.data.latitude}</p>
+        <p>Longitude: ${item.data.longitude}</p>
+        <p>Coins: ${item.coins.length}</p>`;
       container.appendChild(coinInfo);
 
+      const popup = document.createElement("coinHover");
+      document.body.appendChild(popup); // Add popup to the document body
+
+      // Create and configure the Collect button
       const collectButton = newButton("Collect");
       container.appendChild(collectButton);
-      collectButton.addEventListener("click", function () {
-        if (item.coins.length > 0) {
-          const collectCoin = item.coins.pop();
-          if (collectCoin) {
-            playerCoins.push(collectCoin);
-          }
-          updateText(playerInfo, coinInfo, item, playerCoins);
-        }
-      });
+
+      buttonMechanic(
+        collectButton,
+        popup,
+        item.coins,
+        playerCoins,
+        playerInfo,
+        coinInfo,
+        item.data,
+      );
+
+      // Create and configure the Deposit button
       const depositButton = newButton("Deposit");
       container.appendChild(depositButton);
-      depositButton.addEventListener("click", function () {
-        if (playerCoins.length > 0) {
-          const depositCoin = playerCoins.pop();
-          if (depositCoin) {
-            item.coins.push(depositCoin);
-          }
-          updateText(playerInfo, coinInfo, item, playerCoins);
-        }
-      });
-      // Rebind the popup with the updated content
+
+      buttonMechanic(
+        depositButton,
+        popup,
+        playerCoins,
+        item.coins,
+        playerInfo,
+        coinInfo,
+        item.data,
+      );
+
+      // Rebind the popup
       rectangle.bindPopup(container).openPopup();
     };
 
@@ -158,23 +168,86 @@ function drawCachesOnMap(grid: Cache[]) {
     updatePopup();
   });
 }
-function updateText(
-  playerCoin: HTMLHeadingElement,
-  cacheCoin: HTMLHeadingElement,
-  cache: Cache,
-  moneyCount: Coin[],
+function buttonMechanic(
+  button: HTMLButtonElement,
+  displayCoin: HTMLElement,
+  coins: Coin[],
+  otherCoins: Coin[],
+  playerInfo: HTMLHeadingElement,
+  cacheInfo: HTMLHeadingElement,
+  cellData: Cell,
 ) {
-  playerCoin.innerHTML = `Player Money: ${moneyCount.length}`;
-  const coinDetails = cache.coins.length > 0
-    ? `<p>Coin Data: ${cache.coins[cache.coins.length - 1].identity}</p>`
-    : `<p>No coins left in this cache</p>`;
-  cacheCoin.innerHTML = `
-    Cache Details
-    <p>Latitude: ${cache.data.latitude.toFixed(4)}</p> 
-    <p>Longitude: ${cache.data.longitude.toFixed(4)}</p> 
-    <p>Coins: ${cache.coins.length}</p>
-    <p>${coinDetails}</p>
-    `;
+  button.addEventListener("mouseover", function () {
+    if (button.textContent) updateHover(displayCoin, coins, button.textContent);
+    displayCoin.style.display = "block";
+  });
+
+  button.addEventListener("mousemove", function (event) {
+    // Update popup position to follow mouse cursor
+    displayCoin.style.left = `${event.pageX + 10}px`;
+    displayCoin.style.top = `${event.pageY + 10}px`;
+  });
+
+  button.addEventListener("mouseout", function () {
+    // Hide the popup when the mouse leaves
+    displayCoin.style.display = "none";
+  });
+
+  button.addEventListener("click", function () {
+    if (coins.length > 0) {
+      const currentCoin = coins.pop();
+      if (currentCoin) otherCoins.push(currentCoin);
+      if (button.textContent) {
+        updateHover(displayCoin, coins, button.textContent);
+        updateText(
+          playerInfo,
+          cacheInfo,
+          coins,
+          otherCoins,
+          cellData,
+          button.textContent,
+        );
+      }
+    }
+  });
+}
+function updateHover(box: HTMLElement, coins: Coin[], action: string) {
+  let emptyMessage: string = "";
+  if (action == "Collect") {
+    emptyMessage = `No coins left in this cache`;
+  }
+  if (action == "Deposit") {
+    emptyMessage = `No coins left for the player`;
+  }
+  const coinDetails = coins.length > 0
+    ? `<p>Coin Data: ${coins[coins.length - 1].identity}</p>`
+    : `<p>${emptyMessage}</p>`;
+  box.innerHTML = `<p>${coinDetails}</p>`;
+}
+function updateText(
+  playerInfo: HTMLHeadingElement,
+  cacheInfo: HTMLHeadingElement,
+  coins: Coin[],
+  otherCoins: Coin[],
+  cellData: Cell,
+  action: string,
+) {
+  if (action == "Collect") {
+    playerInfo.innerHTML = `Player Money: ${otherCoins.length}`;
+    cacheInfo.innerHTML = `
+      Cache Details
+      <p>Latitude: ${cellData.latitude}</p>
+      <p>Longitude: ${cellData.longitude}</p>
+      <p>Coins: ${coins.length}</p>`;
+  }
+  if (action == "Deposit") {
+    playerInfo.innerHTML = `Player Money: ${coins.length}`;
+    cacheInfo.innerHTML = `
+      Cache Details
+      <p>Latitude: ${cellData.latitude}</p>
+      <p>Longitude: ${cellData.longitude}</p>
+      <p>Coins: ${otherCoins.length}</p>`;
+  }
 }
 
 const GRID_RADIUS = 8; // 8 steps out from the center in each direction
