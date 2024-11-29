@@ -103,7 +103,6 @@ function drawCachesOnMap(grid: Cache[]) {
             item.coin--;
             coinCount++;
             updateText(playerCoins, coinInfo, item);
-            refreshButtons();
           }
         });
         const depositButton = newButton("Deposit");
@@ -113,16 +112,8 @@ function drawCachesOnMap(grid: Cache[]) {
             item.coin++;
             coinCount--;
             updateText(playerCoins, coinInfo, item);
-            refreshButtons();
           }
         });
-
-        // Function to handle enabling/disabling buttons dynamically
-        const refreshButtons = () => {
-          collectButton.disabled = item.coin <= 0; // Disable if cache coins are 0 or less
-          depositButton.disabled = coinCount <= 0; // Disable if player has no coins
-        };
-        refreshButtons();
         // Rebind the popup with the updated content
         rectangle.bindPopup(container).openPopup();
       };
