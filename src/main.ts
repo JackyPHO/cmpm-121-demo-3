@@ -16,7 +16,7 @@ let PLAYER_LAT = 36.9895;
 let PLAYER_LON = -122.06278;
 const CELL_SIZE = 0.0001;
 const GRID_RADIUS = 8; // 8 steps out from the center in each direction
-
+const savedCaches = new Map<string, string>();
 const currentCells = new Map<string, Cell>();
 
 //Interfaces
@@ -66,8 +66,8 @@ function cellBounds(cache: Cell) {
   return [[startLat, startLong], [endLat, endLong]];
 }
 
-//Flyweight pattern to check for existing cells
-function gridCells(
+//Flyweight patterns
+function checkCell(
   location: Cell,
   knownCells: Map<string, Cell>,
 ) {
@@ -84,45 +84,63 @@ function gridCells(
   return knownCells.get(key)!;
 }
 
+//Grid and Cache Functions
 function createGrid(
-  startLat: number,
-  startLon: number,
+  playerLat: number,
+  playerLon: number,
   cellSize: number,
   gridRadius: number,
-) {
-  const grid: Cache[] = [];
-  for (let row = -gridRadius; row <= gridRadius; row++) {
-    for (let col = -gridRadius; col <= gridRadius; col++) {
-      const cellLat = startLat + row * cellSize;
-      const cellLon = startLon + col * cellSize;
-      const newCell = gridCells(
-        { latitude: cellLat, longitude: cellLon },
-        currentCells,
-      );
-      const probability = luck(`${row},${col}`) < 0.1;
-      if (probability) {
-        const randomNumber = Math.floor(luck(`${row},${col}-coins`) * 20) + 1; // Random 1–10 coins
-        const cellCoins: Coin[] = [];
-        for (let i = 0; i < randomNumber; i++) {
-          const newCoin = {
-            i: newCell.latitude,
-            j: newCell.longitude,
-            serial: i,
-            identity: `${newCell.latitude}:${newCell.longitude}#${i}`,
+): Cache[] {
+  const visibleGrid: Cache[] = []; // To store visible cells for rendering
+
+  for (let rowOffset = -gridRadius; rowOffset <= gridRadius; rowOffset++) {
+    for (let colOffset = -gridRadius; colOffset <= gridRadius; colOffset++) {
+      const cellLat = playerLat + rowOffset * cellSize;
+      const cellLon = playerLon + colOffset * cellSize;
+      const key = `${Math.floor(cellLat / cellSize)},${
+        Math.floor(cellLon / cellSize)
+      }`;
+
+      // Check whether the cache exists in savedCaches
+      if (!savedCaches.has(key)) {
+        if (luck(`${key}`) < 0.1) { // 10% chance for new cache
+          const cell = checkCell(
+            { latitude: cellLat, longitude: cellLon },
+            currentCells,
+          );
+
+          const randomCoins: Coin[] = [];
+          const coinCount = Math.floor(luck(`${key}-coins`) * 20) + 1;
+
+          for (let i = 0; i < coinCount; i++) {
+            randomCoins.push({
+              i: cell.latitude,
+              j: cell.longitude,
+              serial: i,
+              identity: `${cell.latitude}:${cell.longitude}#${i}`,
+            });
+          }
+
+          const newCache: Cache = {
+            data: cell,
+            coins: randomCoins,
           };
-          cellCoins.push(newCoin);
+
+          // Save memento of the cache instead of the object itself
+          savedCaches.set(key, toMomento(newCache));
         }
-        const newCache = { data: newCell, coins: cellCoins };
-        grid.push(newCache);
+      }
+
+      // Push to visibleGrid if the cache exists in savedCaches
+      if (savedCaches.has(key)) {
+        const memento = savedCaches.get(key)!; // Get the memento
+        const restoredCache = fromMomento(memento); // Restore the full Cache
+        visibleGrid.push(restoredCache);
       }
     }
   }
-  drawCachesOnMap(grid);
-}
-function newButton(name: string) {
-  const button = document.createElement("button");
-  button.textContent = name;
-  return button;
+
+  return visibleGrid; // Return visible grid for rendering
 }
 function drawCachesOnMap(grid: Cache[]) {
   grid.forEach((item) => {
@@ -136,8 +154,8 @@ function drawCachesOnMap(grid: Cache[]) {
       // Cache details in the popup
       coinInfo.innerHTML = `
         Cache Details
-        <p>Latitude: ${item.data.latitude}</p>
-        <p>Longitude: ${item.data.longitude}</p>
+        <p>Latitude: ${item.data.latitude.toFixed(4)}</p>
+        <p>Longitude: ${item.data.longitude.toFixed(4)}</p>
         <p>Coins: ${item.coins.length}</p>`;
       container.appendChild(coinInfo);
 
@@ -179,6 +197,60 @@ function drawCachesOnMap(grid: Cache[]) {
     // Initialize the first popup rendering
     updatePopup();
   });
+}
+function clearMap() {
+  map.eachLayer((layer: leaflet.Layer) => {
+    if (layer instanceof leaflet.Rectangle) {
+      map.removeLayer(layer);
+    }
+  });
+}
+
+//UI Elements Functions
+function updateHover(box: HTMLElement, coins: Coin[], action: string) {
+  let emptyMessage: string = "";
+  if (action == "Collect") {
+    emptyMessage = `No coins left in this cache`;
+  }
+  if (action == "Deposit") {
+    emptyMessage = `No coins left for the player`;
+  }
+  const coinDetails = coins.length > 0
+    ? `<p>Coin Data: ${coins[coins.length - 1].identity}</p>`
+    : `<p>${emptyMessage}</p>`;
+  box.innerHTML = `<p>${coinDetails}</p>`;
+}
+function updateText(
+  playerInfo: HTMLHeadingElement,
+  cacheInfo: HTMLHeadingElement,
+  coins: Coin[],
+  otherCoins: Coin[],
+  cellData: Cell,
+  action: string,
+) {
+  if (action == "Collect") {
+    playerInfo.innerHTML = `Player Money: ${otherCoins.length}`;
+    cacheInfo.innerHTML = `
+      Cache Details
+      <p>Latitude: ${cellData.latitude.toFixed(4)}</p>
+      <p>Longitude: ${cellData.longitude.toFixed(4)}</p>
+      <p>Coins: ${coins.length}</p>`;
+  }
+  if (action == "Deposit") {
+    playerInfo.innerHTML = `Player Money: ${coins.length}`;
+    cacheInfo.innerHTML = `
+      Cache Details
+      <p>Latitude: ${cellData.latitude.toFixed(4)}</p>
+      <p>Longitude: ${cellData.longitude.toFixed(4)}</p>
+      <p>Coins: ${otherCoins.length}</p>`;
+  }
+}
+
+//Button Functions
+function newButton(name: string) {
+  const button = document.createElement("button");
+  button.textContent = name;
+  return button;
 }
 function buttonMechanic(
   button: HTMLButtonElement,
@@ -223,51 +295,19 @@ function buttonMechanic(
     }
   });
 }
-function updateHover(box: HTMLElement, coins: Coin[], action: string) {
-  let emptyMessage: string = "";
-  if (action == "Collect") {
-    emptyMessage = `No coins left in this cache`;
-  }
-  if (action == "Deposit") {
-    emptyMessage = `No coins left for the player`;
-  }
-  const coinDetails = coins.length > 0
-    ? `<p>Coin Data: ${coins[coins.length - 1].identity}</p>`
-    : `<p>${emptyMessage}</p>`;
-  box.innerHTML = `<p>${coinDetails}</p>`;
-}
-function updateText(
-  playerInfo: HTMLHeadingElement,
-  cacheInfo: HTMLHeadingElement,
-  coins: Coin[],
-  otherCoins: Coin[],
-  cellData: Cell,
-  action: string,
-) {
-  if (action == "Collect") {
-    playerInfo.innerHTML = `Player Money: ${otherCoins.length}`;
-    cacheInfo.innerHTML = `
-      Cache Details
-      <p>Latitude: ${cellData.latitude}</p>
-      <p>Longitude: ${cellData.longitude}</p>
-      <p>Coins: ${coins.length}</p>`;
-  }
-  if (action == "Deposit") {
-    playerInfo.innerHTML = `Player Money: ${coins.length}`;
-    cacheInfo.innerHTML = `
-      Cache Details
-      <p>Latitude: ${cellData.latitude}</p>
-      <p>Longitude: ${cellData.longitude}</p>
-      <p>Coins: ${otherCoins.length}</p>`;
-  }
-}
+
 //Functions for the player movement
 function movePlayer(moveLat: number, moveLon: number) {
+  // Update player location
   PLAYER_LAT += moveLat;
   PLAYER_LON += moveLon;
   player.setLatLng([PLAYER_LAT, PLAYER_LON]);
   map.setView([PLAYER_LAT, PLAYER_LON]);
-  createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+
+  clearMap();
+
+  const newGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+  drawCachesOnMap(newGrid);
 }
 document.getElementById("north")!.addEventListener(
   "click",
@@ -286,4 +326,13 @@ document.getElementById("west")!.addEventListener(
   () => movePlayer(0, -CELL_SIZE),
 );
 
-createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+//Momento Pattern Functions
+function toMomento(keyCache: Cache) {
+  return JSON.stringify(keyCache);
+}
+function fromMomento(memento: string): Cache {
+  return JSON.parse(memento) as Cache; // Restore the cache from JSON
+}
+
+const playerGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+drawCachesOnMap(playerGrid);
