@@ -18,6 +18,10 @@ const CELL_SIZE = 0.0001;
 const GRID_RADIUS = 8; // 8 steps out from the center in each direction
 const savedCaches = new Map<string, string>();
 const currentCells = new Map<string, Cell>();
+let playerPoints: number[][] = [[PLAYER_LAT, PLAYER_LON]];
+let playerPath: leaflet.Polyline | null = null;
+let autoPosition: boolean = false;
+let geoWatchId: number | null = null; // Store geolocation watch ID
 
 //Interfaces
 interface Coin {
@@ -80,8 +84,14 @@ function checkCell(
       longitude: location.longitude,
     });
   }
-
   return knownCells.get(key)!;
+}
+//Momento Pattern
+function toMomento(keyCache: Cache) {
+  return JSON.stringify(keyCache);
+}
+function fromMomento(memento: string): Cache {
+  return JSON.parse(memento) as Cache; // Restore the cache from JSON
 }
 
 //Grid and Cache Functions
@@ -101,47 +111,44 @@ function createGrid(
         Math.floor(cellLon / cellSize)
       }`;
 
-      // Check whether the cache exists in savedCaches
-      if (!savedCaches.has(key)) {
-        if (luck(`${key}`) < 0.1) { // 10% chance for new cache
-          const cell = checkCell(
-            { latitude: cellLat, longitude: cellLon },
-            currentCells,
-          );
-
-          const randomCoins: Coin[] = [];
-          const coinCount = Math.floor(luck(`${key}-coins`) * 20) + 1;
-
-          for (let i = 0; i < coinCount; i++) {
-            randomCoins.push({
-              i: Math.floor(cell.latitude / CELL_SIZE),
-              j: Math.floor(cell.longitude / CELL_SIZE),
-              serial: i,
-              identity: `${Math.floor(cell.latitude / CELL_SIZE)}:${
-                Math.floor(cell.longitude / CELL_SIZE)
-              }#${i}`,
-            });
-          }
-
-          const newCache: Cache = {
-            data: cell,
-            coins: randomCoins,
-          };
-
-          // Save memento of the cache instead of the object itself
-          savedCaches.set(key, toMomento(newCache));
-        }
+      if (savedCaches.has(key)) {
+        const existingCache = fromMomento(savedCaches.get(key)!);
+        visibleGrid.push(existingCache);
+        continue; // Skip any new coin generation for this cache
       }
 
-      // Push to visibleGrid if the cache exists in savedCaches
-      if (savedCaches.has(key)) {
-        const memento = savedCaches.get(key)!; // Get the memento
-        const restoredCache = fromMomento(memento); // Restore the full Cache
-        visibleGrid.push(restoredCache);
+      // Generate a new cache if it doesn't already exist
+      if (luck(`${key}`) < 0.1) { // 10% chance for new cache
+        const cell = checkCell(
+          { latitude: cellLat, longitude: cellLon },
+          currentCells,
+        );
+
+        const randomCoins: Coin[] = [];
+        const coinCount = Math.floor(luck(`${key}-coins`) * 20) + 1;
+
+        for (let i = 0; i < coinCount; i++) {
+          randomCoins.push({
+            i: Math.floor(cell.latitude / CELL_SIZE),
+            j: Math.floor(cell.longitude / CELL_SIZE),
+            serial: i,
+            identity: `${Math.floor(cell.latitude / CELL_SIZE)}:${
+              Math.floor(cell.longitude / CELL_SIZE)
+            }#${i}`,
+          });
+        }
+
+        const newCache: Cache = {
+          data: cell,
+          coins: randomCoins,
+        };
+
+        // Save the new cache in savedCaches
+        savedCaches.set(key, toMomento(newCache));
+        visibleGrid.push(newCache);
       }
     }
   }
-
   return visibleGrid; // Return visible grid for rendering
 }
 function drawCachesOnMap(grid: Cache[]) {
@@ -298,42 +305,110 @@ function buttonMechanic(
 }
 
 //Functions for the player movement
-function movePlayer(moveLat: number, moveLon: number) {
-  // Update player location
-  PLAYER_LAT += moveLat;
-  PLAYER_LON += moveLon;
+function movePlayer(lat: number, lon: number) {
+  PLAYER_LAT = lat;
+  PLAYER_LON = lon;
+  console.log(PLAYER_LAT, PLAYER_LON);
+  playerPoints.push([PLAYER_LAT, PLAYER_LON]);
+  if (playerPath) {
+    playerPath.setLatLngs(playerPoints); // Update the existing polyline's points
+  } else {
+    // Create the polyline if it doesn't exist yet
+    playerPath = leaflet.polyline(playerPoints, { color: "blue" }).addTo(map);
+  }
   player.setLatLng([PLAYER_LAT, PLAYER_LON]);
   map.setView([PLAYER_LAT, PLAYER_LON]);
-
   clearMap();
-
   const newGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
   drawCachesOnMap(newGrid);
+  saveGameState();
 }
+
 document.getElementById("north")!.addEventListener(
   "click",
-  () => movePlayer(CELL_SIZE, 0),
+  () => movePlayer(PLAYER_LAT + CELL_SIZE, PLAYER_LON),
 );
 document.getElementById("south")!.addEventListener(
   "click",
-  () => movePlayer(-CELL_SIZE, 0),
+  () => movePlayer(PLAYER_LAT - CELL_SIZE, PLAYER_LON),
 );
 document.getElementById("east")!.addEventListener(
   "click",
-  () => movePlayer(0, CELL_SIZE),
+  () => movePlayer(PLAYER_LAT, PLAYER_LON + CELL_SIZE),
 );
 document.getElementById("west")!.addEventListener(
   "click",
-  () => movePlayer(0, -CELL_SIZE),
+  () => movePlayer(PLAYER_LAT, PLAYER_LON - CELL_SIZE),
 );
 
-//Momento Pattern Functions
-function toMomento(keyCache: Cache) {
-  return JSON.stringify(keyCache);
-}
-function fromMomento(memento: string): Cache {
-  return JSON.parse(memento) as Cache; // Restore the cache from JSON
-}
-
+//First Initialization of the Caches
 const playerGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
 drawCachesOnMap(playerGrid);
+
+document.getElementById("geo")!.addEventListener("click", () => {
+  if (autoPosition) {
+    if (geoWatchId !== null) {
+      navigator.geolocation.clearWatch(geoWatchId); // Stop geolocation updates
+    }
+    autoPosition = false; // Disable tracking
+  } else {
+    // Start geolocation tracking
+    if ("geolocation" in navigator) {
+      geoWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+
+          // Call function to update the game state with new geolocation data
+          movePlayer(latitude, longitude);
+        },
+        (error) => {
+          console.error("Geolocation error:", error.message);
+        },
+        {
+          enableHighAccuracy: true, // Use GPS for higher accuracy
+        },
+      );
+      console.log("Geolocation tracking started.");
+      autoPosition = true; // Enable tracking
+    } else {
+      console.error("Geolocation is not available on this device.");
+    }
+  }
+});
+
+//Reset the game
+document.getElementById("reset")!.addEventListener("click", () => {
+  while (playerCoins.length > 0) {
+    playerCoins.pop();
+  }
+  playerInfo.innerHTML = `Player Money: ${playerCoins.length}`;
+  savedCaches.clear();
+  playerPoints.length = 0; // Remove all movement history
+  if (playerPath) {
+    map.removeLayer(playerPath); // Remove the polyline from the map
+    playerPath = null; // Reset the polyline reference
+    playerPoints = [[PLAYER_LAT, PLAYER_LON]];
+  }
+
+  // Reset the player's position
+  PLAYER_LAT = 36.9895;
+  PLAYER_LON = -122.06278;
+  player.setLatLng([PLAYER_LAT, PLAYER_LON]);
+  map.setView([PLAYER_LAT, PLAYER_LON], 18);
+
+  // Clear and recreate the grid
+  clearMap();
+  const newGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+  drawCachesOnMap(newGrid);
+});
+
+//Save the game even after the browser window closes
+function saveGameState() {
+  const gameState = {
+    playerPosition: { lat: PLAYER_LAT, lon: PLAYER_LON },
+    playerPoints: playerPoints, // Movement history (player path)
+    playerCoins: playerCoins, // Collected coins
+    savedCaches: Array.from(savedCaches.entries()), // Convert Map to array for JSON storage
+  };
+  localStorage.setItem("gameState", JSON.stringify(gameState));
+}
