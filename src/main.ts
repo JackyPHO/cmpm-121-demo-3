@@ -114,10 +114,12 @@ function createGrid(
 
           for (let i = 0; i < coinCount; i++) {
             randomCoins.push({
-              i: cell.latitude,
-              j: cell.longitude,
+              i: Math.floor(cell.latitude / CELL_SIZE),
+              j: Math.floor(cell.longitude / CELL_SIZE),
               serial: i,
-              identity: `${cell.latitude}:${cell.longitude}#${i}`,
+              identity: `${Math.floor(cell.latitude / CELL_SIZE)}:${
+                Math.floor(cell.longitude / CELL_SIZE)
+              }#${i}`,
             });
           }
 
