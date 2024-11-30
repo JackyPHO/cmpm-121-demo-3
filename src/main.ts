@@ -5,24 +5,45 @@ import "leaflet/dist/leaflet.css";
 import "./leafletWorkaround.ts";
 import luck from "./luck.ts";
 
-const APP_NAME = "Geocoin";
-const app: HTMLDivElement = document.querySelector("#app")!;
-const header = document.createElement("h1");
+const app = document.querySelector("#app")!;
 const playerInfo = document.createElement("h3");
 const playerCoins: Coin[] = [];
-header.innerHTML = APP_NAME;
 playerInfo.innerHTML = `Player Money: ${playerCoins.length}`;
-
-app.append(header);
 app.append(playerInfo);
 
+//Variables
+let PLAYER_LAT = 36.9895;
+let PLAYER_LON = -122.06278;
+const CELL_SIZE = 0.0001;
+const GRID_RADIUS = 8; // 8 steps out from the center in each direction
+
+const currentCells = new Map<string, Cell>();
+
+//Interfaces
+interface Coin {
+  i: number;
+  j: number;
+  serial: number;
+  identity: string;
+}
+interface Cell {
+  latitude: number;
+  longitude: number;
+}
+interface Cache {
+  data: Cell;
+  coins: Coin[];
+}
+
 //Create map of Oake's College
-const PLAYER_LAT = 36.9895;
-const PLAYER_LON = -122.06278;
-const map = leaflet.map("map", { zoomControl: false }).setView([
+const map = leaflet.map("map", {
+  zoomControl: false,
+  dragging: false,
+  doubleClickZoom: false,
+}).setView([
   PLAYER_LAT,
   PLAYER_LON,
-], 19);
+], 18);
 leaflet.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   minZoom: 19,
   attribution:
@@ -36,11 +57,7 @@ player.bindTooltip("You are here", {
   direction: "center",
 });
 
-const CELL_SIZE = 0.0001; // Each cell is 0.0001° wide
-interface Cell {
-  latitude: number;
-  longitude: number;
-}
+//Cell functions
 function cellBounds(cache: Cell) {
   const startLat = cache.latitude - (CELL_SIZE / 2);
   const startLong = cache.longitude - (CELL_SIZE / 2);
@@ -48,30 +65,23 @@ function cellBounds(cache: Cell) {
   const endLong = cache.longitude + (CELL_SIZE / 2);
   return [[startLat, startLong], [endLat, endLong]];
 }
-const currentCells = new Map<string, { i: number; j: number }>();
+
+//Flyweight pattern to check for existing cells
 function gridCells(
   location: Cell,
-  knownCells: Map<string, { i: number; j: number }>,
+  knownCells: Map<string, Cell>,
 ) {
   const i = Math.floor(location.latitude / CELL_SIZE); // Row index
   const j = Math.floor(location.longitude / CELL_SIZE); // Column index
   const key = `${i},${j}`;
   if (!knownCells.has(key)) {
-    knownCells.set(key, { i, j });
+    knownCells.set(key, {
+      latitude: location.latitude,
+      longitude: location.longitude,
+    });
   }
 
   return knownCells.get(key)!;
-}
-
-interface Cache {
-  data: Cell;
-  coins: Coin[];
-}
-interface Coin {
-  i: number;
-  j: number;
-  serial: number;
-  identity: string;
 }
 
 function createGrid(
@@ -79,24 +89,26 @@ function createGrid(
   startLon: number,
   cellSize: number,
   gridRadius: number,
-): Cache[] {
+) {
   const grid: Cache[] = [];
   for (let row = -gridRadius; row <= gridRadius; row++) {
     for (let col = -gridRadius; col <= gridRadius; col++) {
       const cellLat = startLat + row * cellSize;
       const cellLon = startLon + col * cellSize;
-      const newCell = { latitude: cellLat, longitude: cellLon };
-      const coordinates = gridCells(newCell, currentCells);
+      const newCell = gridCells(
+        { latitude: cellLat, longitude: cellLon },
+        currentCells,
+      );
       const probability = luck(`${row},${col}`) < 0.1;
       if (probability) {
         const randomNumber = Math.floor(luck(`${row},${col}-coins`) * 20) + 1; // Random 1–10 coins
         const cellCoins: Coin[] = [];
         for (let i = 0; i < randomNumber; i++) {
           const newCoin = {
-            i: coordinates.i,
-            j: coordinates.j,
+            i: newCell.latitude,
+            j: newCell.longitude,
             serial: i,
-            identity: `${coordinates.i}:${coordinates.j}#${i}`,
+            identity: `${newCell.latitude}:${newCell.longitude}#${i}`,
           };
           cellCoins.push(newCoin);
         }
@@ -105,7 +117,7 @@ function createGrid(
       }
     }
   }
-  return grid;
+  drawCachesOnMap(grid);
 }
 function newButton(name: string) {
   const button = document.createElement("button");
@@ -161,7 +173,7 @@ function drawCachesOnMap(grid: Cache[]) {
       );
 
       // Rebind the popup
-      rectangle.bindPopup(container).openPopup();
+      rectangle.bindPopup(container, { autoPan: false }).openPopup();
     };
 
     // Initialize the first popup rendering
@@ -249,7 +261,29 @@ function updateText(
       <p>Coins: ${otherCoins.length}</p>`;
   }
 }
+//Functions for the player movement
+function movePlayer(moveLat: number, moveLon: number) {
+  PLAYER_LAT += moveLat;
+  PLAYER_LON += moveLon;
+  player.setLatLng([PLAYER_LAT, PLAYER_LON]);
+  map.setView([PLAYER_LAT, PLAYER_LON]);
+  createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+}
+document.getElementById("north")!.addEventListener(
+  "click",
+  () => movePlayer(CELL_SIZE, 0),
+);
+document.getElementById("south")!.addEventListener(
+  "click",
+  () => movePlayer(-CELL_SIZE, 0),
+);
+document.getElementById("east")!.addEventListener(
+  "click",
+  () => movePlayer(0, CELL_SIZE),
+);
+document.getElementById("west")!.addEventListener(
+  "click",
+  () => movePlayer(0, -CELL_SIZE),
+);
 
-const GRID_RADIUS = 8; // 8 steps out from the center in each direction
-const grid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
-drawCachesOnMap(grid);
+createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
