@@ -148,57 +148,56 @@ function drawCachesOnMap(grid: Cache[]) {
   grid.forEach((item) => {
     const bounds = cellBounds(item.data);
     const rectangle = leaflet.rectangle(bounds).addTo(map);
-    const updatePopup = () => {
-      // Create elements for the popup
-      const container = document.createElement("div");
-      const coinInfo = document.createElement("h4");
-
-      // Cache details in the popup
-      coinInfo.innerHTML = `
-        Cache Details
-        <p>Latitude: ${item.data.latitude.toFixed(4)}</p>
-        <p>Longitude: ${item.data.longitude.toFixed(4)}</p>
-        <p>Coins: ${item.coins.length}</p>`;
-      container.appendChild(coinInfo);
-
-      const popup = document.createElement("coinHover");
-      document.body.appendChild(popup); // Add popup to the document body
-
-      // Create and configure the Collect button
-      const collectButton = newButton("Collect");
-      container.appendChild(collectButton);
-
-      buttonMechanic(
-        collectButton,
-        popup,
-        item.coins,
-        playerCoins,
-        playerInfo,
-        coinInfo,
-        item.data,
-      );
-
-      // Create and configure the Deposit button
-      const depositButton = newButton("Deposit");
-      container.appendChild(depositButton);
-
-      buttonMechanic(
-        depositButton,
-        popup,
-        playerCoins,
-        item.coins,
-        playerInfo,
-        coinInfo,
-        item.data,
-      );
-
-      // Rebind the popup
-      rectangle.bindPopup(container, { autoPan: false }).openPopup();
-    };
-
-    // Initialize the first popup rendering
-    updatePopup();
+    rectangle.on("click", function () {
+      const detail = updatePopup(item);
+      rectangle.bindPopup(detail, { autoPan: false }).openPopup();
+    });
   });
+}
+
+//Cache Detail
+function updatePopup(item: Cache) {
+  const container = document.createElement("div");
+  const coinInfo = document.createElement("h4");
+  // Cache details in the popup
+  coinInfo.innerHTML = `
+      Cache Details
+      <p>Latitude: ${item.data.latitude.toFixed(4)}</p>
+      <p>Longitude: ${item.data.longitude.toFixed(4)}</p>
+      <p>Coins: ${item.coins.length}</p>`;
+  container.appendChild(coinInfo);
+
+  const popup = document.createElement("coinHover");
+  document.body.appendChild(popup); // Add popup to the document body
+
+  // Create and configure the Collect button
+  const collectButton = newButton("Collect");
+  container.appendChild(collectButton);
+
+  buttonMechanic(
+    collectButton,
+    popup,
+    item.coins,
+    playerCoins,
+    playerInfo,
+    coinInfo,
+    item.data,
+  );
+
+  // Create and configure the Deposit button
+  const depositButton = newButton("Deposit");
+  container.appendChild(depositButton);
+
+  buttonMechanic(
+    depositButton,
+    popup,
+    playerCoins,
+    item.coins,
+    playerInfo,
+    coinInfo,
+    item.data,
+  );
+  return container;
 }
 function clearMap() {
   map.eachLayer((layer: leaflet.Layer) => {
