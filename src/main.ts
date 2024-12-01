@@ -39,7 +39,7 @@ interface Cache {
   coins: Coin[];
 }
 
-//Create map of Oake's College
+//Map Functions
 const map = leaflet.map("map", {
   zoomControl: false,
   dragging: false,
@@ -53,6 +53,13 @@ leaflet.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution:
     '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(map);
+function clearMap() {
+  map.eachLayer((layer: leaflet.Layer) => {
+    if (layer instanceof leaflet.Rectangle) {
+      map.removeLayer(layer);
+    }
+  });
+}
 
 //Set player location in Oakes College classroom
 const player = leaflet.marker([PLAYER_LAT, PLAYER_LON]).addTo(map);
@@ -156,14 +163,36 @@ function drawCachesOnMap(grid: Cache[]) {
     const bounds = cellBounds(item.data);
     const rectangle = leaflet.rectangle(bounds).addTo(map);
     rectangle.on("click", function () {
-      const detail = updatePopup(item);
-      rectangle.bindPopup(detail, { autoPan: false }).openPopup();
+      const cacheDetails = buildPopupContainer(item).container;
+      const coinData = buildPopupContainer(item).coinInfo;
+
+      addButton(
+        cacheDetails,
+        "Collect",
+        item.coins,
+        playerCoins,
+        playerInfo,
+        coinData,
+        item.data,
+      );
+      addButton(
+        cacheDetails,
+        "Deposit",
+        playerCoins,
+        item.coins,
+        playerInfo,
+        coinData,
+        item.data,
+      );
+
+      rectangle.bindPopup(cacheDetails, { autoPan: false }).openPopup();
+      console.log(cacheDetails);
     });
   });
 }
 
 //Cache Detail
-function updatePopup(item: Cache) {
+function buildPopupContainer(item: Cache) {
   const container = document.createElement("div");
   const coinInfo = document.createElement("h4");
   // Cache details in the popup
@@ -173,45 +202,29 @@ function updatePopup(item: Cache) {
       <p>Longitude: ${item.data.longitude.toFixed(4)}</p>
       <p>Coins: ${item.coins.length}</p>`;
   container.appendChild(coinInfo);
-
-  const popup = document.createElement("coinHover");
-  document.body.appendChild(popup); // Add popup to the document body
-
-  // Create and configure the Collect button
-  const collectButton = newButton("Collect");
-  container.appendChild(collectButton);
-
-  buttonMechanic(
-    collectButton,
-    popup,
-    item.coins,
-    playerCoins,
-    playerInfo,
-    coinInfo,
-    item.data,
-  );
-
-  // Create and configure the Deposit button
-  const depositButton = newButton("Deposit");
-  container.appendChild(depositButton);
-
-  buttonMechanic(
-    depositButton,
-    popup,
-    playerCoins,
-    item.coins,
-    playerInfo,
-    coinInfo,
-    item.data,
-  );
-  return container;
+  return { container, coinInfo };
 }
-function clearMap() {
-  map.eachLayer((layer: leaflet.Layer) => {
-    if (layer instanceof leaflet.Rectangle) {
-      map.removeLayer(layer);
-    }
-  });
+function addButton(
+  container: HTMLElement,
+  buttonText: string,
+  coins: Coin[],
+  otherCoins: Coin[],
+  playerInfo: HTMLHeadingElement,
+  coinInfo: HTMLHeadingElement,
+  cellData: Cell,
+): void {
+  const button = newButton(buttonText);
+  container.appendChild(button);
+
+  buttonMechanic(
+    button,
+    document.createElement("coinHover"), // This can be replaced by a hover display element if needed
+    coins,
+    otherCoins,
+    playerInfo,
+    coinInfo,
+    cellData,
+  );
 }
 
 //UI Elements Functions
