@@ -341,19 +341,31 @@ document.getElementById("west")!.addEventListener(
   () => movePlayer(PLAYER_LAT, PLAYER_LON - CELL_SIZE),
 );
 
-//First Initialization of the Caches
-const playerGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
-drawCachesOnMap(playerGrid);
-
 document.getElementById("geo")!.addEventListener("click", () => {
+  const geoButton = document.getElementById("geo") as HTMLButtonElement;
+  const movementButtons = [
+    document.getElementById("north"),
+    document.getElementById("south"),
+    document.getElementById("east"),
+    document.getElementById("west"),
+  ] as HTMLButtonElement[];
   if (autoPosition) {
     if (geoWatchId !== null) {
       navigator.geolocation.clearWatch(geoWatchId); // Stop geolocation updates
     }
     autoPosition = false; // Disable tracking
+    geoButton.style.backgroundColor = "";
+    movementButtons.forEach((button) => (button.disabled = false));
+    saveGameState();
   } else {
     // Start geolocation tracking
     if ("geolocation" in navigator) {
+      playerPoints = [];
+      if (playerPath) {
+        map.removeLayer(playerPath);
+        playerPath = null;
+      }
+
       geoWatchId = navigator.geolocation.watchPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
@@ -368,8 +380,11 @@ document.getElementById("geo")!.addEventListener("click", () => {
           enableHighAccuracy: true, // Use GPS for higher accuracy
         },
       );
-      console.log("Geolocation tracking started.");
+      alert("Geolocation tracking started.");
       autoPosition = true; // Enable tracking
+      geoButton.style.backgroundColor = "green";
+      movementButtons.forEach((button) => (button.disabled = true));
+      saveGameState();
     } else {
       console.error("Geolocation is not available on this device.");
     }
@@ -378,28 +393,40 @@ document.getElementById("geo")!.addEventListener("click", () => {
 
 //Reset the game
 document.getElementById("reset")!.addEventListener("click", () => {
-  while (playerCoins.length > 0) {
-    playerCoins.pop();
-  }
-  playerInfo.innerHTML = `Player Money: ${playerCoins.length}`;
-  savedCaches.clear();
-  playerPoints.length = 0; // Remove all movement history
-  if (playerPath) {
-    map.removeLayer(playerPath); // Remove the polyline from the map
-    playerPath = null; // Reset the polyline reference
+  const choice = prompt("Type confirm to restart the game");
+  if (choice && choice.trim().toLowerCase() === "confirm") {
+    while (playerCoins.length > 0) {
+      playerCoins.pop();
+    }
+    playerInfo.innerHTML = `Player Money: ${playerCoins.length}`;
+    savedCaches.clear();
+    playerPoints.length = 0; // Remove all movement history
+    if (playerPath) {
+      map.removeLayer(playerPath); // Remove the polyline from the map
+      playerPath = null; // Reset the polyline reference
+    }
+
+    const geoButton = document.getElementById("geo") as HTMLButtonElement;
+    if (geoWatchId !== null) {
+      navigator.geolocation.clearWatch(geoWatchId); // Stop geolocation updates
+      geoWatchId = null; // Reset the watch ID
+    }
+    autoPosition = false;
+    geoButton.style.backgroundColor = "";
+
+    // Reset the player's position
+    PLAYER_LAT = 36.9895;
+    PLAYER_LON = -122.06278;
     playerPoints = [[PLAYER_LAT, PLAYER_LON]];
+    player.setLatLng([PLAYER_LAT, PLAYER_LON]);
+    map.setView([PLAYER_LAT, PLAYER_LON], 18);
+
+    // Clear and recreate the grid
+    clearMap();
+    const newGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+    drawCachesOnMap(newGrid);
+    saveGameState();
   }
-
-  // Reset the player's position
-  PLAYER_LAT = 36.9895;
-  PLAYER_LON = -122.06278;
-  player.setLatLng([PLAYER_LAT, PLAYER_LON]);
-  map.setView([PLAYER_LAT, PLAYER_LON], 18);
-
-  // Clear and recreate the grid
-  clearMap();
-  const newGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
-  drawCachesOnMap(newGrid);
 });
 
 //Save the game even after the browser window closes
@@ -409,6 +436,62 @@ function saveGameState() {
     playerPoints: playerPoints, // Movement history (player path)
     playerCoins: playerCoins, // Collected coins
     savedCaches: Array.from(savedCaches.entries()), // Convert Map to array for JSON storage
+    autoPosition: autoPosition,
+    geoWatchId: geoWatchId, // This will be null if geolocation is not active
+    geoButtonColor: document.getElementById("geo")?.style.backgroundColor || "",
   };
   localStorage.setItem("gameState", JSON.stringify(gameState));
 }
+//Load Game State function from CHATGPT
+function loadGameState() {
+  const savedState = localStorage.getItem("gameState");
+  if (savedState) {
+    const gameState = JSON.parse(savedState);
+
+    // Restore player position from saved state
+    PLAYER_LAT = gameState.playerPosition.lat;
+    PLAYER_LON = gameState.playerPosition.lon;
+    playerPoints = gameState.playerPoints;
+
+    // Restore geolocation state
+    autoPosition = gameState.autoPosition;
+    geoWatchId = gameState.geoWatchId;
+    const geoButton = document.getElementById("geo") as HTMLButtonElement;
+    geoButton.style.backgroundColor = gameState.geoButtonColor;
+
+    // Restore player coins
+    while (playerCoins.length > 0) playerCoins.pop(); // Clear existing coins
+    gameState.playerCoins.forEach((coin: Coin) => playerCoins.push(coin));
+
+    // Restore saved caches
+    savedCaches.clear();
+    gameState.savedCaches.forEach(([key, value]: [string, string]) => {
+      savedCaches.set(key, value);
+    });
+
+    // Update player info UI
+    playerInfo.innerHTML = `Player Money: ${playerCoins.length}`;
+
+    // Update map: center on the player’s last location, not Oakes College
+    player.setLatLng([PLAYER_LAT, PLAYER_LON]);
+    console.log(PLAYER_LAT, PLAYER_LON);
+    map.setView([PLAYER_LAT, PLAYER_LON], 18); // This will center the map on the player's position
+
+    // Restore the player's movement path if available
+    if (playerPoints.length > 0) {
+      playerPath = leaflet.polyline(playerPoints, { color: "blue" }).addTo(map);
+    }
+
+    // Create and render the grid based on the restored player location
+    clearMap();
+    const newGrid = createGrid(PLAYER_LAT, PLAYER_LON, CELL_SIZE, GRID_RADIUS);
+    drawCachesOnMap(newGrid);
+
+    console.log("Game state loaded successfully!");
+  } else {
+    console.log("No saved game state found.");
+  }
+}
+
+//Call Function to open the browser with a saved state
+loadGameState();
